@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tic‑Tac‑Toe – Joueur vs IA (Niveaux)</title>
+  <style>
+    body {font-family: Arial, Helvetica, sans-serif; background:#f0f0f0; display:flex; flex-direction:column; align-items:center; margin:0; height:100vh;}
+    h1 {margin-top:20px;}
+    #controls {margin:10px;}
+    #board {display:grid; grid-template-columns: repeat(3, 1fr); gap:5px; width:90vw; max-width:350px; aspect-ratio:1; margin:20px auto;}
+    .cell {background:#fff; border:2px solid #333; font-size:64px; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+    .cell:hover {background:#eaeaea;}
+    #status {margin:10px; font-size:24px; font-weight:bold;}
+    #reset {padding:8px 16px; font-size:16px; cursor:pointer;}
+  </style>
+</head>
+<body>
+  <h1>Tic‑Tac‑Toe – Vous vs IA</h1>
+  <div id="controls">
+    <label for="levelSelect">Niveau de l'IA&nbsp;:</label>
+    <select id="levelSelect">
+      <option value="easy">Facile (mouvements aléatoires)</option>
+      <option value="medium" selected>Moyen (minimax limité)</option>
+      <option value="hard">Difficile (minimax parfait)</option>
+    </select>
+  </div>
+  <div id="status">Choisissez qui commence…</div>
+  <div id="board"></div>
+  <button id="reset">Nouvelle partie</button>
+
+  <!-- Audio elements for win / lose -->
+  <audio id="winSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="></audio>
+  <audio id="loseSound" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="></audio>
+
+  <script>
+    const HUMAN = 'X';
+    const AI = 'O';
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('reset');
+    const levelSelect = document.getElementById('levelSelect');
+    const winAudio = document.getElementById('winSound');
+    const loseAudio = document.getElementById('loseSound');
+
+    let board = Array(9).fill(''); // '' empty, 'X' or 'O'
+    let turn = null; // 'human' or 'ai'
+    let gameOver = false;
+
+    // ---------------------------------------------------------------------
+    //  Initialise UI
+    // ---------------------------------------------------------------------
+    function init() {
+      boardEl.innerHTML = '';
+      board.forEach((_, i) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.idx = i;
+        cell.addEventListener('click', onHumanMove);
+        boardEl.appendChild(cell);
+      });
+      const start = confirm('Voulez‑vous commencer ?\nOK = Vous (X) commence, Annuler = IA (O) commence.');
+      turn = start ? 'human' : 'ai';
+      gameOver = false;
+      board = Array(9).fill('');
+      render();
+      statusEl.textContent = start ? "Votre tour (X)" : "Tour de l'IA (O)";
+      if (turn === 'ai') setTimeout(aiMove, 300);
+    }
+
+    // ---------------------------------------------------------------------
+    //  Render board
+    // ---------------------------------------------------------------------
+    function render() {
+      board.forEach((mark, i) => {
+        boardEl.children[i].textContent = mark;
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    //  Human click handler
+    // ---------------------------------------------------------------------
+    function onHumanMove(e) {
+      if (gameOver || turn !== 'human') return;
+      const idx = Number(e.target.dataset.idx);
+      if (board[idx] !== '') return;
+      board[idx] = HUMAN;
+      render();
+      if (checkWinner(board, HUMAN)) endGame('human');
+      else if (board.every(c => c !== '')) endGame('draw');
+      else { turn = 'ai'; statusEl.textContent = "Tour de l'IA (O)"; setTimeout(aiMove, 300); }
+    }
+
+    // ---------------------------------------------------------------------
+    //  AI – choose algorithm based on selected level
+    // ---------------------------------------------------------------------
+    function aiMove() {
+      if (gameOver) return;
+      const level = levelSelect.value;
+      let moveIndex;
+      if (level === 'easy') {
+        moveIndex = randomMove(board);
+      } else if (level === 'medium') {
+        const best = minimax(board, AI, 2);
+        moveIndex = best.index;
+      } else {
+        const best = minimax(board, AI);
+        moveIndex = best.index;
+      }
+      board[moveIndex] = AI;
+      render();
+      if (checkWinner(board, AI)) endGame('ai');
+      else if (board.every(c => c !== '')) endGame('draw');
+      else { turn = 'human'; statusEl.textContent = "Votre tour (X)"; }
+    }
+
+    // ---------------------------------------------------------------------
+    //  Random move (easy level)
+    // ---------------------------------------------------------------------
+    function randomMove(b) {
+      const empty = b.map((v,i)=>v===''?i:null).filter(v=>v!==null);
+      return empty[Math.floor(Math.random()*empty.length)];
+    }
+
+    // ---------------------------------------------------------------------
+    //  Minimax (perfect or depth‑limited)
+    // ---------------------------------------------------------------------
+    function minimax(newBoard, player, depthLimit = null) {
+      const availSpots = newBoard.map((v,i)=>v===''?i:null).filter(v=>v!==null);
+      if (checkWinner(newBoard, HUMAN)) return {score: -10};
+      if (checkWinner(newBoard, AI)) return {score: 10};
+      if (availSpots.length === 0) return {score: 0};
+      if (depthLimit !== null && depthLimit === 0) {
+        const score = heuristicScore(newBoard);
+        return {score};
+      }
+      const moves = [];
+      for (const i of availSpots) {
+        const move = {};
+        move.index = i;
+        newBoard[i] = player;
+        const nextDepth = depthLimit !== null ? depthLimit - 1 : null;
+        const result = minimax(newBoard, player === AI ? HUMAN : AI, nextDepth);
+        move.score = result.score;
+        newBoard[i] = '';
+        moves.push(move);
+      }
+      let bestMove;
+      if (player === AI) {
+        let bestScore = -Infinity;
+        for (const m of moves) {
+          if (m.score > bestScore) { bestScore = m.score; bestMove = m; }
+        }
+      } else {
+        let bestScore = Infinity;
+        for (const m of moves) {
+          if (m.score < bestScore) { bestScore = m.score; bestMove = m; }
+        }
+      }
+      return bestMove;
+    }
+
+    function heuristicScore(b) {
+      const lines = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+      ];
+      let score = 0;
+      for (const line of lines) {
+        const marks = line.map(i=>b[i]);
+        if (!marks.includes(HUMAN) && marks.filter(m=>m===AI).length>0) score += 1;
+        if (!marks.includes(AI) && marks.filter(m=>m===HUMAN).length>0) score -= 1;
+      }
+      return score;
+    }
+
+    const winLines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+    function checkWinner(b, player) {
+      return winLines.some(line => line.every(idx => b[idx] === player));
+    }
+
+    function endGame(winner) {
+      gameOver = true;
+      if (winner === 'human') {
+        statusEl.textContent = "🥳 rbee7ti m9awd";
+        winAudio.currentTime = 0;
+        winAudio.play();
+      } else if (winner === 'ai') {
+        statusEl.textContent = "😂 l9lawi lab7ti";
+        loseAudio.currentTime = 0;
+        loseAudio.play();
+      } else {
+        statusEl.textContent = "Match nul !";
+      }
+    }
+
+    resetBtn.addEventListener('click', init);
+    init();
+  </script>
+</body>
+</html>
